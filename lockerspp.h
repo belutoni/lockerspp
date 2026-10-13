@@ -43,7 +43,7 @@ public:
             if (expected <= 0) {
                 expected = m_count.load();
             } else if (m_count.compare_exchange_weak(expected, expected - 1)) {
-                    return;
+                return;
             }
         }
     }
@@ -64,6 +64,54 @@ public:
     Semaphore& operator=(Semaphore const&) = delete;
     Semaphore(Semaphore&&) = delete;
     Semaphore& operator=(Semaphore&&) = delete;
+};
+
+class RWLock {
+    std::atomic<std::ptrdiff_t> m_readers_count;
+public:
+    RWLock() : m_readers_count(0) {}
+
+    void lock() {
+        std::ptrdiff_t expected{0};
+        while (!m_readers_count.compare_exchange_weak(expected, -1)) expected = 0;
+    }
+
+    bool try_lock() {
+        std::ptrdiff_t expected{0};
+        return m_readers_count.compare_exchange_strong(expected, -1);
+    }
+
+    void unlock() {
+        m_readers_count.store(0);
+    }
+
+    void lock_shared() {
+        std::ptrdiff_t expected{m_readers_count.load()};
+        while (true) {
+            if (expected < 0) {
+                expected = m_readers_count.load();
+            } else if (m_readers_count.compare_exchange_weak(expected, expected + 1)) {
+                return;
+            }
+        }
+    }
+
+    bool try_lock_shared() {
+        std::ptrdiff_t expected{m_readers_count.load()};
+        if (expected < 0)
+            return false;
+
+        return m_readers_count.compare_exchange_strong(expected, expected + 1);
+    }
+
+    void unlock_shared() {
+        m_readers_count.fetch_sub(1);
+    }
+
+    RWLock(RWLock const&) = delete;
+    RWLock& operator=(RWLock const&) = delete;
+    RWLock(RWLock&&) = delete;
+    RWLock& operator=(RWLock&&) = delete;
 };
 
 #endif //LOCKERSPP_LOCKERSPP_H
